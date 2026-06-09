@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, redirect, send_file
 import mysql.connector
 from reportlab.pdfgen import canvas
 import os
+import qrcode
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -126,14 +128,14 @@ def generate_offer(id):
 
     pdf.setFont("Helvetica-Bold", 22)
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         800,
         "TECHNOVA SOLUTIONS"
     )
 
     pdf.setFont("Helvetica", 12)
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         780,
         "Innovating The Future Through Technology"
     )
@@ -142,7 +144,7 @@ def generate_offer(id):
 
     pdf.setFont("Helvetica-Bold", 18)
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         730,
         "OFFER LETTER"
     )
@@ -159,32 +161,13 @@ def generate_offer(id):
     )
 
     pdf.setFont("Helvetica-Bold", 12)
-
-    pdf.drawString(
-        50,
-        585,
-        candidate[4]
-    )
+    pdf.drawString(50, 585, candidate[4])
 
     pdf.setFont("Helvetica", 12)
 
-    pdf.drawString(
-        50,
-        560,
-        f"at {candidate[6]}"
-    )
-
-    pdf.drawString(
-        50,
-        530,
-        f"Duration : {candidate[8]}"
-    )
-
-    pdf.drawString(
-        50,
-        500,
-        f"Stipend : {candidate[7]}"
-    )
+    pdf.drawString(50, 560, f"at {candidate[6]}")
+    pdf.drawString(50, 530, f"Duration : {candidate[8]}")
+    pdf.drawString(50, 500, f"Stipend : {candidate[7]}")
 
     pdf.drawString(
         50,
@@ -194,17 +177,8 @@ def generate_offer(id):
 
     pdf.line(350, 180, 500, 180)
 
-    pdf.drawString(
-        380,
-        160,
-        "HR Department"
-    )
-
-    pdf.drawString(
-        360,
-        140,
-        candidate[6]
-    )
+    pdf.drawString(380, 160, "HR Department")
+    pdf.drawString(360, 140, candidate[6])
 
     pdf.save()
 
@@ -212,6 +186,91 @@ def generate_offer(id):
         filename,
         as_attachment=True
     )
+
+@app.route("/delete/<int:id>")
+def delete_candidate(id):
+
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM candidates WHERE id=%s",
+        (id,)
+    )
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return redirect("/")
+
+@app.route("/edit/<int:id>", methods=["GET", "POST"])
+def edit_candidate(id):
+
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+
+    if request.method == "POST":
+
+        full_name = request.form["full_name"]
+        email = request.form["email"]
+        college = request.form["college"]
+        role_name = request.form["role_name"]
+        joining_date = request.form["joining_date"]
+        company_name = request.form["company_name"]
+        stipend = request.form["stipend"]
+        duration = request.form["duration"]
+
+        query = """
+        UPDATE candidates
+        SET
+        full_name=%s,
+        email=%s,
+        college=%s,
+        role_name=%s,
+        joining_date=%s,
+        company_name=%s,
+        stipend=%s,
+        duration=%s
+        WHERE id=%s
+        """
+
+        values = (
+            full_name,
+            email,
+            college,
+            role_name,
+            joining_date,
+            company_name,
+            stipend,
+            duration,
+            id
+        )
+
+        cursor.execute(query, values)
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return redirect("/")
+
+    cursor.execute(
+        "SELECT * FROM candidates WHERE id=%s",
+        (id,)
+    )
+
+    candidate = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "edit_candidate.html",
+        candidate=candidate
+    )    
+    
 
 
 # ==========================
@@ -236,7 +295,21 @@ def generate_certificate(id):
     if not candidate:
         return "Candidate Not Found"
 
+    certificate_id = candidate[9]
+
     os.makedirs("generated/certificates", exist_ok=True)
+    os.makedirs("generated/qr_codes", exist_ok=True)
+
+    verification_url = (
+        f"http://127.0.0.1:5000/verify/{certificate_id}"
+    )
+
+    qr_path = (
+        f"generated/qr_codes/{certificate_id}.png"
+    )
+
+    qr = qrcode.make(verification_url)
+    qr.save(qr_path)
 
     filename = (
         f"generated/certificates/"
@@ -251,14 +324,14 @@ def generate_certificate(id):
 
     pdf.setFont("Helvetica-Bold", 28)
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         740,
         "CERTIFICATE"
     )
 
     pdf.setFont("Helvetica", 20)
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         700,
         "OF COMPLETION"
     )
@@ -266,7 +339,7 @@ def generate_certificate(id):
     pdf.setFont("Helvetica", 14)
 
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         620,
         "This is to certify that"
     )
@@ -274,7 +347,7 @@ def generate_certificate(id):
     pdf.setFont("Helvetica-Bold", 24)
 
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         570,
         candidate[1].upper()
     )
@@ -282,27 +355,41 @@ def generate_certificate(id):
     pdf.setFont("Helvetica", 14)
 
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         520,
         "has successfully completed the internship"
     )
 
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         490,
         f"as a {candidate[4]}"
     )
 
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         460,
         f"at {candidate[6]}"
     )
 
     pdf.drawCentredString(
-        width/2,
+        width / 2,
         430,
         f"for a duration of {candidate[8]}"
+    )
+
+    pdf.drawCentredString(
+        width / 2,
+        380,
+        f"Certificate ID: {certificate_id}"
+    )
+
+    pdf.drawImage(
+        qr_path,
+        430,
+        220,
+        width=80,
+        height=80
     )
 
     pdf.line(380, 180, 520, 180)
@@ -325,6 +412,58 @@ def generate_certificate(id):
         filename,
         as_attachment=True
     )
+
+
+# ==========================
+# VERIFY CERTIFICATE
+# ==========================
+@app.route("/verify/<certificate_id>")
+def verify_certificate(certificate_id):
+
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM candidates WHERE certificate_id=%s",
+        (certificate_id,)
+    )
+
+    candidate = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not candidate:
+        return """
+        <h1 style='color:red'>
+        Certificate Not Found ❌
+        </h1>
+        """
+
+    return f"""
+    <html>
+    <head>
+        <title>Certificate Verification</title>
+    </head>
+
+    <body style="font-family:Arial;padding:40px">
+
+        <h1 style="color:green">
+            Certificate Verified ✅
+        </h1>
+
+        <hr>
+
+        <h3>Name: {candidate[1]}</h3>
+        <h3>Email: {candidate[2]}</h3>
+        <h3>Role: {candidate[4]}</h3>
+        <h3>Company: {candidate[6]}</h3>
+        <h3>Duration: {candidate[8]}</h3>
+        <h3>Certificate ID: {candidate[9]}</h3>
+
+    </body>
+    </html>
+    """
 
 
 if __name__ == "__main__":
